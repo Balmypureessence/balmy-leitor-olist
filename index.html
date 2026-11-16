@@ -22,7 +22,7 @@
     #reader{width:100%;margin-top:12px;overflow:hidden}
     #reader video{max-width:100%}
     .hidden{display:none!important}
-    .status{font-size:13px;color:#666;overflow-wrap:anywhere}
+    .status{font-size:13px;color:#666;overflow-wrap:anywhere;line-height:1.5}
     .item{padding:10px 0;border-bottom:1px solid #eee;display:flex;gap:8px;align-items:center;justify-content:space-between}
     .item span{overflow-wrap:anywhere;min-width:0}
     .item button{width:auto;flex-shrink:0;margin:0;padding:8px 10px}
@@ -42,9 +42,13 @@
     </div>
 
     <div class="card">
-      <button id="abrir" onclick="abrirCamera()">Escanear Etiqueta de Envio</button>
+      <button id="abrir" onclick="abrirCamera()">
+        Escanear Etiqueta de Envio
+      </button>
       <div id="reader"></div>
-      <button id="fechar" class="secondary hidden" onclick="fecharCamera()">Fechar câmera</button>
+      <button id="fechar" class="secondary hidden" onclick="fecharCamera()">
+        Fechar câmera
+      </button>
       <p id="status" class="status" aria-live="polite">Aguardando leitura.</p>
 
       <label for="manual">Adicionar código manualmente</label>
@@ -68,20 +72,37 @@
     </div>
 
     <div class="card">
-      <label for="motorista"><strong>Nome do motorista / responsável pela retirada</strong></label>
+      <label for="motorista">
+        <strong>Nome do motorista / responsável pela retirada</strong>
+      </label>
       <input id="motorista" placeholder="Nome completo" autocomplete="name">
 
       <h3>Assinatura do motorista</h3>
       <canvas id="assinatura"></canvas>
       <button class="secondary" onclick="limparAssinatura()">Limpar assinatura</button>
 
-      <p class="hint">Assine com o dedo. Confira os volumes antes de finalizar.</p>
+      <p class="hint">
+        Assine com o dedo. Confira os volumes antes de finalizar.
+      </p>
 
-      <button id="finalizar" onclick="prepararComprovante()">Conferir dados do comprovante</button>
+      <button id="finalizar" onclick="prepararComprovante()">
+        Gerar e salvar comprovante PDF
+      </button>
       <p id="resultado" class="status" aria-live="polite"></p>
     </div>
   </section>
 </main>
+
+<form
+  id="formEnvio"
+  method="POST"
+  action="https://script.google.com/macros/s/AKfycbyNlh6nI2yAwVB0OLUjInlZUtXK4hvvvgqEXfMH6NDTMXrC917luk9sxLbQCDo2E-WI/exec"
+  class="hidden"
+>
+  <input type="hidden" name="codigos" id="envioCodigos">
+  <input type="hidden" name="motorista" id="envioMotorista">
+  <input type="hidden" name="assinatura" id="envioAssinatura">
+</form>
 
 <script>
   const codigos = [];
@@ -90,6 +111,7 @@
   let fechando = false;
   let assinou = false;
   let desenhando = false;
+  let enviando = false;
 
   const canvas = document.getElementById('assinatura');
   const ctx = canvas.getContext('2d');
@@ -337,7 +359,14 @@
   }
 
   function prepararComprovante() {
+    if (enviando) return;
+
     const nome = document.getElementById('motorista').value.trim();
+
+    if (!codigos.length) {
+      alert('Nenhuma etiqueta registrada.');
+      return;
+    }
 
     if (!nome) {
       alert('Informe o nome do motorista.');
@@ -349,10 +378,30 @@
       return;
     }
 
+    const confirmado = confirm(
+      'Confirma a coleta de ' + codigos.length +
+      ' volume(s) pelo motorista ' + nome +
+      '?\n\nO comprovante será enviado para o Google Drive.'
+    );
+
+    if (!confirmado) return;
+
+    document.getElementById('envioCodigos').value =
+      JSON.stringify(codigos);
+
+    document.getElementById('envioMotorista').value = nome;
+
+    document.getElementById('envioAssinatura').value =
+      canvas.toDataURL('image/png');
+
+    enviando = true;
+
+    document.getElementById('finalizar').disabled = true;
+
     document.getElementById('resultado').textContent =
-      'Conferência pronta: ' + codigos.length +
-      ' volumes, motorista ' + nome +
-      '. A geração do PDF será ativada na próxima etapa da integração segura com o Google Drive.';
+      'Enviando dados ao Google Apps Script. Aguarde a confirmação do PDF.';
+
+    document.getElementById('formEnvio').submit();
   }
 </script>
 </body>
