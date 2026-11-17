@@ -4,8 +4,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#333333">
   <title>BALMY | Controle de Coletas</title>
+
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
   <style>
     *{box-sizing:border-box}
     body{margin:0;padding:20px;background:#f4f4f4;color:#242424;font-family:Arial,sans-serif}
@@ -28,8 +31,10 @@
     .item button{width:auto;flex-shrink:0;margin:0;padding:8px 10px}
     canvas{width:100%;height:170px;display:block;border:1px solid #ccc;border-radius:8px;background:#fff;touch-action:none}
     .hint{font-size:12px;color:#777;line-height:1.5}
+    .camera-hint{font-size:13px;color:#555;line-height:1.5;margin-top:10px}
   </style>
 </head>
+
 <body>
 <main>
   <h1>BALMY</h1>
@@ -45,21 +50,43 @@
       <button id="abrir" onclick="abrirCamera()">
         Escanear Etiqueta de Envio
       </button>
+
       <div id="reader"></div>
+
       <button id="fechar" class="secondary hidden" onclick="fecharCamera()">
         Fechar câmera
       </button>
-      <p id="status" class="status" aria-live="polite">Aguardando leitura.</p>
+
+      <p id="status" class="status" aria-live="polite">
+        Aguardando leitura.
+      </p>
+
+      <p class="camera-hint">
+        Para códigos longos, mantenha a etiqueta inteira visível,
+        com boa iluminação e a câmera firme.
+      </p>
 
       <label for="manual">Adicionar código manualmente</label>
-      <input id="manual" inputmode="numeric" placeholder="Número da etiqueta">
-      <button class="secondary" onclick="adicionarManual()">Adicionar código</button>
+      <input
+        id="manual"
+        inputmode="text"
+        autocapitalize="characters"
+        autocomplete="off"
+        placeholder="Código da etiqueta ou DANFE"
+      >
+
+      <button class="secondary" onclick="adicionarManual()">
+        Adicionar código
+      </button>
     </div>
 
     <div class="card">
       <h3>Etiquetas registradas</h3>
       <div id="lista"></div>
-      <button onclick="abrirConferencia()">Finalizar leitura e conferir</button>
+
+      <button onclick="abrirConferencia()">
+        Finalizar leitura e conferir
+      </button>
     </div>
   </section>
 
@@ -67,19 +94,31 @@
     <div class="card">
       <h2>Conferência de coleta</h2>
       <p><strong id="totalFinal">0</strong> volumes registrados</p>
+
       <div id="listaFinal"></div>
-      <button class="secondary" onclick="voltarLeitura()">Voltar à leitura</button>
+
+      <button class="secondary" onclick="voltarLeitura()">
+        Voltar à leitura
+      </button>
     </div>
 
     <div class="card">
       <label for="motorista">
         <strong>Nome do motorista / responsável pela retirada</strong>
       </label>
-      <input id="motorista" placeholder="Nome completo" autocomplete="name">
+
+      <input
+        id="motorista"
+        placeholder="Nome completo"
+        autocomplete="name"
+      >
 
       <h3>Assinatura do motorista</h3>
       <canvas id="assinatura"></canvas>
-      <button class="secondary" onclick="limparAssinatura()">Limpar assinatura</button>
+
+      <button class="secondary" onclick="limparAssinatura()">
+        Limpar assinatura
+      </button>
 
       <p class="hint">
         Assine com o dedo. Confira os volumes antes de finalizar.
@@ -88,6 +127,7 @@
       <button id="finalizar" onclick="prepararComprovante()">
         Gerar e salvar comprovante PDF
       </button>
+
       <p id="resultado" class="status" aria-live="polite"></p>
     </div>
   </section>
@@ -106,12 +146,17 @@
 
 <script>
   const codigos = [];
+
   let scanner = null;
   let iniciando = false;
   let fechando = false;
   let assinou = false;
   let desenhando = false;
   let enviando = false;
+
+  let audioContext = null;
+  let ultimaLeitura = '';
+  let instanteUltimaLeitura = 0;
 
   const canvas = document.getElementById('assinatura');
   const ctx = canvas.getContext('2d');
@@ -122,6 +167,7 @@
 
   function atualizar() {
     document.getElementById('contador').textContent = codigos.length;
+
     const lista = document.getElementById('lista');
     lista.replaceChildren();
 
@@ -146,33 +192,52 @@
     });
   }
 
-  function avisoSonoro() {
+  function prepararAudio() {
     try {
       const C = window.AudioContext || window.webkitAudioContext;
       if (!C) return;
 
-      const a = new C();
-      const o = a.createOscillator();
-      const g = a.createGain();
+      if (!audioContext) {
+        audioContext = new C();
+      }
 
-      o.type = 'sine';
-      o.frequency.value = 880;
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => {});
+      }
+    } catch (e) {}
+  }
 
-      g.gain.setValueAtTime(.12, a.currentTime);
-      g.gain.exponentialRampToValueAtTime(.001, a.currentTime + .14);
+  function avisoSonoro() {
+    try {
+      if (audioContext && audioContext.state === 'running') {
+        const o = audioContext.createOscillator();
+        const g = audioContext.createGain();
 
-      o.connect(g);
-      g.connect(a.destination);
-      o.start();
-      o.stop(a.currentTime + .15);
-      o.onended = () => a.close();
+        o.type = 'sine';
+        o.frequency.value = 880;
+
+        g.gain.setValueAtTime(.12, audioContext.currentTime);
+        g.gain.exponentialRampToValueAtTime(
+          .001,
+          audioContext.currentTime + .14
+        );
+
+        o.connect(g);
+        g.connect(audioContext.destination);
+
+        o.start();
+        o.stop(audioContext.currentTime + .15);
+      }
     } catch (e) {}
 
-    if (navigator.vibrate) navigator.vibrate(100);
+    if (navigator.vibrate) {
+      navigator.vibrate(100);
+    }
   }
 
   function registrar(codigo) {
     codigo = String(codigo || '').trim();
+
     if (!codigo) return;
 
     if (codigos.includes(codigo)) {
@@ -183,20 +248,41 @@
     codigos.push(codigo);
     atualizar();
     avisoSonoro();
+
     status('Etiqueta registrada: ' + codigo);
   }
 
   function adicionarManual() {
     const campo = document.getElementById('manual');
+
     registrar(campo.value);
     campo.value = '';
+  }
+
+  function codigoReconhecido(texto, resultado) {
+    const agora = Date.now();
+
+    if (
+      texto === ultimaLeitura &&
+      agora - instanteUltimaLeitura < 1500
+    ) {
+      return;
+    }
+
+    ultimaLeitura = texto;
+    instanteUltimaLeitura = agora;
+
+    registrar(texto);
   }
 
   async function abrirCamera() {
     if (scanner || iniciando || fechando) return;
 
     iniciando = true;
+
     document.getElementById('abrir').disabled = true;
+
+    prepararAudio();
     status('Solicitando acesso à câmera...');
 
     try {
@@ -208,32 +294,68 @@
         formatsToSupport: [
           Html5QrcodeSupportedFormats.CODE_128,
           Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.ITF
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.ITF_14,
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+          Html5QrcodeSupportedFormats.PDF_417,
+          Html5QrcodeSupportedFormats.CODABAR
         ],
-        verbose: false
+        verbose: false,
+        useBarCodeDetectorIfSupported: true
       });
 
       await scanner.start(
         { facingMode: 'environment' },
         {
-          fps: 10,
-          qrbox: (w, h) => ({
-            width: Math.floor(w * .9),
-            height: Math.min(Math.floor(h * .4), 160)
-          })
+          fps: 15,
+
+          qrbox: (w, h) => {
+            const largura = Math.floor(w * .96);
+            const altura = Math.min(
+              Math.floor(h * .55),
+              220
+            );
+
+            return {
+              width: largura,
+              height: altura
+            };
+          },
+
+          aspectRatio: 1.777778,
+
+          disableFlip: true,
+
+          videoConstraints: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
         },
-        texto => registrar(texto),
+        codigoReconhecido,
         () => {}
       );
 
       document.getElementById('fechar').classList.remove('hidden');
-      status('Câmera aberta. Aponte para o código de transporte.');
+
+      status(
+        'Câmera aberta. Leitura de códigos de barras e QR Codes ativada.'
+      );
 
     } catch (e) {
-      status('Erro ao abrir câmera: ' + (e.message || e));
+      status(
+        'Erro ao abrir câmera: ' + (e.message || e)
+      );
 
       if (scanner) {
-        try { scanner.clear(); } catch (_) {}
+        try {
+          await scanner.clear();
+        } catch (_) {}
+
         scanner = null;
       }
 
@@ -251,11 +373,15 @@
 
     try {
       await scanner.stop();
-      scanner.clear();
+      await scanner.clear();
+
       status('Câmera fechada. Leituras preservadas.');
 
     } catch (e) {
-      status('Não foi possível fechar a câmera: ' + (e.message || e));
+      status(
+        'Não foi possível fechar a câmera: ' +
+        (e.message || e)
+      );
 
     } finally {
       scanner = null;
@@ -277,7 +403,10 @@
       return;
     }
 
-    if (scanner) await fecharCamera();
+    if (scanner) {
+      await fecharCamera();
+    }
+
     if (scanner) return;
 
     document.getElementById('leitura').classList.add('hidden');
@@ -301,6 +430,7 @@
   function voltarLeitura() {
     document.getElementById('conferencia').classList.add('hidden');
     document.getElementById('leitura').classList.remove('hidden');
+
     window.scrollTo(0, 0);
   }
 
@@ -347,12 +477,20 @@
     if (!desenhando) return;
 
     const p = ponto(e);
+
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
   });
 
-  canvas.addEventListener('pointerup', () => desenhando = false);
-  canvas.addEventListener('pointercancel', () => desenhando = false);
+  canvas.addEventListener(
+    'pointerup',
+    () => desenhando = false
+  );
+
+  canvas.addEventListener(
+    'pointercancel',
+    () => desenhando = false
+  );
 
   function limparAssinatura() {
     configurarCanvas();
@@ -379,8 +517,10 @@
     }
 
     const confirmado = confirm(
-      'Confirma a coleta de ' + codigos.length +
-      ' volume(s) pelo motorista ' + nome +
+      'Confirma a coleta de ' +
+      codigos.length +
+      ' volume(s) pelo motorista ' +
+      nome +
       '?\n\nO comprovante será enviado para o Google Drive.'
     );
 
