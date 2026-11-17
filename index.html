@@ -6,22 +6,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#333333">
   <title>BALMY | Controle de Coletas</title>
-
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-
   <style>
     *{box-sizing:border-box}
     body{margin:0;padding:20px;background:#f4f4f4;color:#242424;font-family:Arial,sans-serif}
     main{max-width:560px;margin:auto}
     h1{margin:0;font-size:32px;letter-spacing:1px}
     .sub{color:#777;margin:6px 0 20px}
-    .card{background:white;padding:18px;border-radius:14px;margin:14px 0}
+    .card{background:#fff;padding:18px;border-radius:14px;margin:14px 0}
     .count{font-size:52px;font-weight:bold;text-align:center}
     .center{text-align:center}
-    button{width:100%;border:0;border-radius:9px;padding:14px;margin-top:10px;background:#333;color:white;font-size:15px;font-weight:bold;cursor:pointer}
+    button{width:100%;border:0;border-radius:9px;padding:14px;margin-top:10px;background:#333;color:#fff;font-size:15px;font-weight:bold;cursor:pointer}
     button.secondary{background:#e9e9e9;color:#222}
     button:disabled{opacity:.5}
-    input{width:100%;padding:13px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-top:8px}
+    input,select{width:100%;padding:13px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-top:8px;background:white}
+    label{display:block;margin-top:8px}
     #reader{width:100%;margin-top:12px;overflow:hidden}
     #reader video{max-width:100%}
     .hidden{display:none!important}
@@ -31,14 +30,12 @@
     .item button{width:auto;flex-shrink:0;margin:0;padding:8px 10px}
     canvas{width:100%;height:170px;display:block;border:1px solid #ccc;border-radius:8px;background:#fff;touch-action:none}
     .hint{font-size:12px;color:#777;line-height:1.5}
-    .camera-hint{font-size:13px;color:#555;line-height:1.5;margin-top:10px}
   </style>
 </head>
-
 <body>
 <main>
   <h1>BALMY</h1>
-  <p class="sub">Controle de Coletas | Olist Envios</p>
+  <p class="sub">Controle de Coletas</p>
 
   <section id="leitura">
     <div class="card center">
@@ -47,8 +44,19 @@
     </div>
 
     <div class="card">
+      <label for="transportadora"><strong>Transportadora da coleta</strong></label>
+      <select id="transportadora" onchange="alterarTransportadora()">
+        <option value="olist">Olist Envios</option>
+        <option value="frenet">Frenet / Loggi</option>
+        <option value="correios">Correios</option>
+      </select>
+
+      <p class="hint" id="orientacao">
+        Leia o código de barras da etiqueta de envio.
+      </p>
+
       <button id="abrir" onclick="abrirCamera()">
-        Escanear Etiqueta de Envio
+        Escanear etiqueta de envio
       </button>
 
       <div id="reader"></div>
@@ -61,20 +69,14 @@
         Aguardando leitura.
       </p>
 
-      <p class="camera-hint">
-        Para códigos longos, mantenha a etiqueta inteira visível,
-        com boa iluminação e a câmera firme.
-      </p>
-
       <label for="manual">Adicionar código manualmente</label>
       <input
         id="manual"
         inputmode="text"
         autocapitalize="characters"
         autocomplete="off"
-        placeholder="Código da etiqueta ou DANFE"
+        placeholder="Código da etiqueta"
       >
-
       <button class="secondary" onclick="adicionarManual()">
         Adicionar código
       </button>
@@ -83,7 +85,6 @@
     <div class="card">
       <h3>Etiquetas registradas</h3>
       <div id="lista"></div>
-
       <button onclick="abrirConferencia()">
         Finalizar leitura e conferir
       </button>
@@ -94,9 +95,7 @@
     <div class="card">
       <h2>Conferência de coleta</h2>
       <p><strong id="totalFinal">0</strong> volumes registrados</p>
-
       <div id="listaFinal"></div>
-
       <button class="secondary" onclick="voltarLeitura()">
         Voltar à leitura
       </button>
@@ -106,16 +105,10 @@
       <label for="motorista">
         <strong>Nome do motorista / responsável pela retirada</strong>
       </label>
-
-      <input
-        id="motorista"
-        placeholder="Nome completo"
-        autocomplete="name"
-      >
+      <input id="motorista" placeholder="Nome completo" autocomplete="name">
 
       <h3>Assinatura do motorista</h3>
       <canvas id="assinatura"></canvas>
-
       <button class="secondary" onclick="limparAssinatura()">
         Limpar assinatura
       </button>
@@ -127,7 +120,6 @@
       <button id="finalizar" onclick="prepararComprovante()">
         Gerar e salvar comprovante PDF
       </button>
-
       <p id="resultado" class="status" aria-live="polite"></p>
     </div>
   </section>
@@ -146,17 +138,13 @@
 
 <script>
   const codigos = [];
-
   let scanner = null;
   let iniciando = false;
   let fechando = false;
   let assinou = false;
   let desenhando = false;
   let enviando = false;
-
   let audioContext = null;
-  let ultimaLeitura = '';
-  let instanteUltimaLeitura = 0;
 
   const canvas = document.getElementById('assinatura');
   const ctx = canvas.getContext('2d');
@@ -165,9 +153,80 @@
     document.getElementById('status').textContent = texto;
   }
 
+  function transportadoraAtual() {
+    return document.getElementById('transportadora').value;
+  }
+
+  function alterarTransportadora() {
+    const tipo = transportadoraAtual();
+
+    const mensagens = {
+      olist: 'Leia o código de barras da etiqueta Olist Envios.',
+      frenet: 'Leia o código de barras principal da Frenet / Loggi.',
+      correios: 'Leia somente o rastreamento dos Correios, com 13 caracteres. Códigos PLP e DANFE serão ignorados.'
+    };
+
+    document.getElementById('orientacao').textContent = mensagens[tipo];
+
+    if (codigos.length) {
+      status('Transportadora alterada. Confira os códigos já registrados.');
+    }
+  }
+
+  function normalizarCodigo(texto) {
+    return String(texto || '').trim().toUpperCase();
+  }
+
+  function validarCodigo(codigo) {
+    const tipo = transportadoraAtual();
+
+    if (!codigo) {
+      return { valido: false, motivo: 'Código vazio.' };
+    }
+
+    if (tipo === 'correios') {
+      const limpo = codigo.replace(/\s+/g, '');
+
+      if (!/^[A-Z]{2}[0-9]{9}[A-Z]{2}$/.test(limpo)) {
+        return {
+          valido: false,
+          motivo: 'Código ignorado. No modo Correios, leia o rastreamento de 13 caracteres.'
+        };
+      }
+
+      return { valido: true, codigo: limpo };
+    }
+
+    // A chave de acesso da NF-e possui 44 dígitos.
+    // Ela não deve ser contada como volume de transporte.
+    const semEspacos = codigo.replace(/\s+/g, '');
+
+    if (/^[0-9]{44}$/.test(semEspacos)) {
+      return {
+        valido: false,
+        motivo: 'Código da DANFE ignorado. Leia a etiqueta de transporte.'
+      };
+    }
+
+    // Não aceitar endereços de consulta ou dados extensos
+    // que possam ter vindo de códigos auxiliares.
+    if (
+      codigo.length > 100 ||
+      /^https?:\/\//i.test(codigo)
+    ) {
+      return {
+        valido: false,
+        motivo: 'Código auxiliar ignorado.'
+      };
+    }
+
+    // Os padrões exatos da Olist e Frenet serão refinados
+    // após os testes com etiquetas reais.
+    return { valido: true, codigo: codigo };
+  }
+
   function atualizar() {
     document.getElementById('contador').textContent = codigos.length;
-
     const lista = document.getElementById('lista');
     lista.replaceChildren();
 
@@ -197,9 +256,7 @@
       const C = window.AudioContext || window.webkitAudioContext;
       if (!C) return;
 
-      if (!audioContext) {
-        audioContext = new C();
-      }
+      if (!audioContext) audioContext = new C();
 
       if (audioContext.state === 'suspended') {
         audioContext.resume().catch(() => {});
@@ -224,64 +281,47 @@
 
         o.connect(g);
         g.connect(audioContext.destination);
-
         o.start();
         o.stop(audioContext.currentTime + .15);
       }
     } catch (e) {}
 
-    if (navigator.vibrate) {
-      navigator.vibrate(100);
-    }
+    if (navigator.vibrate) navigator.vibrate(100);
   }
 
-  function registrar(codigo) {
-    codigo = String(codigo || '').trim();
+  function registrar(texto) {
+    const codigo = normalizarCodigo(texto);
+    const resultado = validarCodigo(codigo);
 
-    if (!codigo) return;
-
-    if (codigos.includes(codigo)) {
-      status('Etiqueta já registrada: ' + codigo);
+    if (!resultado.valido) {
+      status(resultado.motivo);
       return;
     }
 
-    codigos.push(codigo);
+    const codigoFinal = resultado.codigo;
+
+    if (codigos.includes(codigoFinal)) {
+      status('Etiqueta já registrada: ' + codigoFinal);
+      return;
+    }
+
+    codigos.push(codigoFinal);
     atualizar();
     avisoSonoro();
-
-    status('Etiqueta registrada: ' + codigo);
+    status('Etiqueta registrada: ' + codigoFinal);
   }
 
   function adicionarManual() {
     const campo = document.getElementById('manual');
-
     registrar(campo.value);
     campo.value = '';
-  }
-
-  function codigoReconhecido(texto, resultado) {
-    const agora = Date.now();
-
-    if (
-      texto === ultimaLeitura &&
-      agora - instanteUltimaLeitura < 1500
-    ) {
-      return;
-    }
-
-    ultimaLeitura = texto;
-    instanteUltimaLeitura = agora;
-
-    registrar(texto);
   }
 
   async function abrirCamera() {
     if (scanner || iniciando || fechando) return;
 
     iniciando = true;
-
     document.getElementById('abrir').disabled = true;
-
     prepararAudio();
     status('Solicitando acesso à câmera...');
 
@@ -296,12 +336,9 @@
           Html5QrcodeSupportedFormats.CODE_39,
           Html5QrcodeSupportedFormats.ITF,
           Html5QrcodeSupportedFormats.ITF_14,
-          Html5QrcodeSupportedFormats.QR_CODE,
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.EAN_8,
           Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.DATA_MATRIX,
-          Html5QrcodeSupportedFormats.PDF_417,
           Html5QrcodeSupportedFormats.CODABAR
         ],
         verbose: false,
@@ -312,55 +349,36 @@
         { facingMode: 'environment' },
         {
           fps: 15,
-
-          qrbox: (w, h) => {
-            const largura = Math.floor(w * .96);
-            const altura = Math.min(
-              Math.floor(h * .55),
-              220
-            );
-
-            return {
-              width: largura,
-              height: altura
-            };
-          },
-
-          aspectRatio: 1.777778,
-
+          qrbox: (w, h) => ({
+            width: Math.max(1, Math.floor(w * .96)),
+            height: Math.max(
+              1,
+              Math.min(Math.floor(h * .55), 220)
+            )
+          }),
           disableFlip: true,
-
           videoConstraints: {
             facingMode: 'environment',
             width: { ideal: 1920 },
             height: { ideal: 1080 }
           }
         },
-        codigoReconhecido,
+        texto => registrar(texto),
         () => {}
       );
 
       document.getElementById('fechar').classList.remove('hidden');
-
-      status(
-        'Câmera aberta. Leitura de códigos de barras e QR Codes ativada.'
-      );
+      status('Câmera aberta. Somente códigos de barras habilitados.');
 
     } catch (e) {
-      status(
-        'Erro ao abrir câmera: ' + (e.message || e)
-      );
+      status('Erro ao abrir câmera: ' + (e.message || e));
 
       if (scanner) {
-        try {
-          await scanner.clear();
-        } catch (_) {}
-
+        try { await scanner.clear(); } catch (_) {}
         scanner = null;
       }
 
       document.getElementById('abrir').disabled = false;
-
     } finally {
       iniciando = false;
     }
@@ -374,19 +392,12 @@
     try {
       await scanner.stop();
       await scanner.clear();
-
       status('Câmera fechada. Leituras preservadas.');
-
     } catch (e) {
-      status(
-        'Não foi possível fechar a câmera: ' +
-        (e.message || e)
-      );
-
+      status('Não foi possível fechar a câmera: ' + (e.message || e));
     } finally {
       scanner = null;
       fechando = false;
-
       document.getElementById('fechar').classList.add('hidden');
       document.getElementById('abrir').disabled = false;
     }
@@ -403,15 +414,10 @@
       return;
     }
 
-    if (scanner) {
-      await fecharCamera();
-    }
-
-    if (scanner) return;
+    if (scanner) await fecharCamera();
 
     document.getElementById('leitura').classList.add('hidden');
     document.getElementById('conferencia').classList.remove('hidden');
-
     document.getElementById('totalFinal').textContent = codigos.length;
 
     const lista = document.getElementById('listaFinal');
@@ -430,7 +436,6 @@
   function voltarLeitura() {
     document.getElementById('conferencia').classList.add('hidden');
     document.getElementById('leitura').classList.remove('hidden');
-
     window.scrollTo(0, 0);
   }
 
@@ -462,11 +467,9 @@
   canvas.addEventListener('pointerdown', e => {
     desenhando = true;
     assinou = true;
-
     canvas.setPointerCapture(e.pointerId);
 
     const p = ponto(e);
-
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
     ctx.lineTo(p.x + .1, p.y + .1);
@@ -475,22 +478,13 @@
 
   canvas.addEventListener('pointermove', e => {
     if (!desenhando) return;
-
     const p = ponto(e);
-
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
   });
 
-  canvas.addEventListener(
-    'pointerup',
-    () => desenhando = false
-  );
-
-  canvas.addEventListener(
-    'pointercancel',
-    () => desenhando = false
-  );
+  canvas.addEventListener('pointerup', () => desenhando = false);
+  canvas.addEventListener('pointercancel', () => desenhando = false);
 
   function limparAssinatura() {
     configurarCanvas();
@@ -517,10 +511,8 @@
     }
 
     const confirmado = confirm(
-      'Confirma a coleta de ' +
-      codigos.length +
-      ' volume(s) pelo motorista ' +
-      nome +
+      'Confirma a coleta de ' + codigos.length +
+      ' volume(s) pelo motorista ' + nome +
       '?\n\nO comprovante será enviado para o Google Drive.'
     );
 
@@ -535,7 +527,6 @@
       canvas.toDataURL('image/png');
 
     enviando = true;
-
     document.getElementById('finalizar').disabled = true;
 
     document.getElementById('resultado').textContent =
