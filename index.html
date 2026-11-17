@@ -104,7 +104,13 @@
       <label for="motorista">
         <strong>Nome do motorista / responsável pela retirada</strong>
       </label>
-      <input id="motorista" placeholder="Nome completo" autocomplete="name">
+      <input id="motorista" placeholder="Nome completo" autocomplete="name" required>
+
+      <label for="documento"><strong>CPF ou RG do motorista</strong></label>
+      <input id="documento" placeholder="Informe o CPF ou RG" autocomplete="off" required>
+
+      <label for="placa"><strong>Placa do veículo</strong></label>
+      <input id="placa" placeholder="ABC1D23" autocomplete="off" autocapitalize="characters" maxlength="8" required oninput="this.value = this.value.toUpperCase()">
 
       <h3>Assinatura do motorista</h3>
       <canvas id="assinatura"></canvas>
@@ -134,6 +140,8 @@
   <input type="hidden" name="motorista" id="envioMotorista">
   <input type="hidden" name="assinatura" id="envioAssinatura">
   <input type="hidden" name="transportadora" id="envioTransportadora">
+  <input type="hidden" name="documento" id="envioDocumento">
+  <input type="hidden" name="placa" id="envioPlaca">
 </form>
 
 <script>
@@ -494,6 +502,8 @@
     if (enviando) return;
 
     const nome = document.getElementById('motorista').value.trim();
+    const documento = document.getElementById('documento').value.trim();
+    const placa = document.getElementById('placa').value.trim().toUpperCase();
 
     if (!codigos.length) {
       alert('Nenhuma etiqueta registrada.');
@@ -502,6 +512,18 @@
 
     if (!nome) {
       alert('Informe o nome do motorista.');
+      return;
+    }
+
+    if (!documento) {
+      alert('Informe o CPF ou RG do motorista.');
+      document.getElementById('documento').focus();
+      return;
+    }
+
+    if (!placa) {
+      alert('Informe a placa do veículo.');
+      document.getElementById('placa').focus();
       return;
     }
 
@@ -523,6 +545,8 @@
 
     document.getElementById('envioMotorista').value = nome;
     document.getElementById('envioTransportadora').value = transportadoraAtual();
+    document.getElementById('envioDocumento').value = documento;
+    document.getElementById('envioPlaca').value = placa;
 
     document.getElementById('envioAssinatura').value =
       canvas.toDataURL('image/png');
